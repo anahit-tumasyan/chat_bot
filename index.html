@@ -1,0 +1,1424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>D'DRIVEN DEI Chatbot — Iris</title>
+
+<!--
+  SECURITY: Content-Security-Policy restricts what can run on this page.
+  Adjust 'connect-src' to your production backend domain before deploying.
+-->
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'self';
+               script-src  'self' 'unsafe-inline';
+               style-src   'self' 'unsafe-inline' https://fonts.googleapis.com;
+               font-src    https://fonts.gstatic.com;
+               img-src     'self' data:;
+               connect-src 'self' http://localhost:5000;" />
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Nunito:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet" />
+
+<style>
+/* ════════════════════════════════════════════════════════
+   DESIGN TOKENS
+════════════════════════════════════════════════════════ */
+:root {
+  --teal:        #0A6175;
+  --teal-dark:   #074E5E;
+  --teal-light:  #E5F4F7;
+  --coral:       #E8624A;
+  --gold:        #F5A623;
+  --white:       #FFFFFF;
+  --offwhite:    #F8F7F4;
+  --text:        #1C2B30;
+  --text-muted:  #687A80;
+  --border:      #DCE8EB;
+  --shadow-sm:   0 2px 8px rgba(10,97,117,0.10);
+  --shadow-lg:   0 20px 60px rgba(10,97,117,0.22);
+  --font-display:'DM Serif Display', Georgia, serif;
+  --font-body:   'Nunito', sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--font-body);
+  background: #E8F0F2;
+  min-height: 100vh;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text);
+}
+
+/* ════════════════════════════════════════════════════════
+   DEMO BACKDROP
+════════════════════════════════════════════════════════ */
+.demo-page { text-align: center; padding: 40px 20px; }
+.demo-page h1 {
+  font-family: var(--font-display);
+  font-size: 2.4rem; color: var(--teal); margin-bottom: 10px;
+}
+.demo-page p {
+  color: var(--text-muted); font-size: 1rem;
+  max-width: 420px; margin: 0 auto; line-height: 1.6;
+}
+.demo-hint {
+  margin-top: 28px; display: inline-flex; align-items: center; gap: 10px;
+  background: white; border: 1.5px solid var(--border); border-radius: 50px;
+  padding: 10px 22px; font-size: 0.88rem; color: var(--text-muted); font-weight: 600;
+  animation: nudge 2.5s ease-in-out infinite;
+}
+@keyframes nudge {
+  0%,100% { transform: translateY(0); }
+  50%      { transform: translateY(-4px); }
+}
+
+/* ════════════════════════════════════════════════════════
+   FLOATING LAUNCHER
+════════════════════════════════════════════════════════ */
+#chat-launcher {
+  position: fixed; bottom: 28px; right: 28px;
+  width: 64px; height: 64px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--teal), var(--teal-dark));
+  box-shadow: 0 6px 24px rgba(10,97,117,0.45);
+  border: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: transform 0.2s cubic-bezier(.34,1.56,.64,1), box-shadow 0.2s;
+  z-index: 9998; outline: none;
+}
+#chat-launcher:hover  { transform: scale(1.1); box-shadow: 0 10px 32px rgba(10,97,117,0.55); }
+#chat-launcher:active { transform: scale(0.95); }
+
+.launcher-icon {
+  position: absolute;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+  transition: opacity 0.25s, transform 0.25s;
+}
+.launcher-close {
+  position: absolute;
+  transition: opacity 0.25s, transform 0.25s;
+}
+.launcher-close { opacity: 0; transform: rotate(-90deg); }
+#chat-launcher.open .launcher-icon  { opacity: 0; transform: rotate(90deg); }
+#chat-launcher.open .launcher-close { opacity: 1; transform: rotate(0deg); }
+
+#chat-launcher::after {
+  content: ''; position: absolute; inset: -4px; border-radius: 50%;
+  border: 2px solid rgba(10,97,117,0.3);
+  animation: pulse-ring 2.8s ease-out infinite;
+}
+@keyframes pulse-ring {
+  0%   { opacity: 0.7; transform: scale(1); }
+  100% { opacity: 0;   transform: scale(1.5); }
+}
+
+.notif-dot {
+  position: absolute; top: 4px; right: 4px;
+  width: 14px; height: 14px; background: var(--coral);
+  border-radius: 50%; border: 2px solid white;
+  animation: pop-in 0.4s cubic-bezier(.34,1.56,.64,1) 1.2s both;
+}
+@keyframes pop-in {
+  from { transform: scale(0); opacity: 0; }
+  to   { transform: scale(1); opacity: 1; }
+}
+#chat-launcher.open .notif-dot { display: none; }
+
+/* ════════════════════════════════════════════════════════
+   CHAT OVERLAY & WINDOW
+════════════════════════════════════════════════════════ */
+#chat-overlay {
+  position: fixed; inset: 0;
+  background: rgba(7,30,36,0.40);
+  backdrop-filter: blur(4px);
+  z-index: 9999;
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+#chat-overlay.visible { opacity: 1; pointer-events: all; }
+
+#chat-window {
+  width: 100%; max-width: 480px;
+  height: min(680px, 88vh);
+  background: var(--white); border-radius: 26px;
+  box-shadow: var(--shadow-lg);
+  display: flex; flex-direction: column; overflow: hidden;
+  transform: translateY(24px) scale(0.97); opacity: 0;
+  transition: transform 0.35s cubic-bezier(.34,1.28,.64,1), opacity 0.3s ease;
+}
+#chat-overlay.visible #chat-window { transform: translateY(0) scale(1); opacity: 1; }
+
+/* ─── Header ─────────────────────────────────────────── */
+#chat-header {
+  background: linear-gradient(135deg, var(--teal), var(--teal-dark));
+  padding: 18px 20px 16px;
+  display: flex; align-items: center; gap: 14px;
+  flex-shrink: 0;
+}
+
+.bot-avatar-wrap {
+  width: 48px; height: 48px; border-radius: 50%;
+  border: 2.5px solid rgba(255,255,255,0.35);
+  overflow: hidden; flex-shrink: 0;
+  background: rgba(255,255,255,0.15);
+  display: flex; align-items: center; justify-content: center;
+}
+.bot-avatar-wrap img { width:100%; height:100%; object-fit:cover; display:none; }
+.avatar-fallback { font-family:var(--font-display); font-size:1.3rem; color:white; font-style:italic; }
+
+.bot-info { flex: 1; }
+.bot-name { font-family:var(--font-display); font-size:1.15rem; color:white; line-height:1.2; }
+.bot-subtitle { font-size:0.76rem; color:rgba(255,255,255,0.72); font-weight:600; margin-top:2px; letter-spacing:0.02em; }
+
+.online-badge { display:flex; align-items:center; gap:5px; font-size:0.74rem; color:rgba(255,255,255,0.80); font-weight:600; }
+.online-dot {
+  width:7px; height:7px; background:#4ADE80; border-radius:50%;
+  box-shadow:0 0 6px rgba(74,222,128,0.8);
+  animation: blink 2s ease-in-out infinite;
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+.close-btn {
+  background:rgba(255,255,255,0.12); border:none;
+  width:34px; height:34px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer; color:white; transition:background 0.2s; flex-shrink:0;
+}
+.close-btn:hover { background:rgba(255,255,255,0.22); }
+
+/* ─── Progress bar ───────────────────────────────────── */
+#quiz-progress-bar { background:rgba(10,97,117,0.12); height:5px; flex-shrink:0; display:none; }
+#quiz-progress-fill {
+  height:100%;
+  background:linear-gradient(90deg, var(--gold), #FFCD6B);
+  transition: width 0.5s cubic-bezier(.4,0,.2,1);
+  border-radius:0 3px 3px 0; width:0%;
+}
+#progress-label {
+  text-align:right; font-size:0.7rem; color:var(--text-muted); padding:3px 12px 0;
+  font-weight:700; display:none;
+}
+
+/* ─── Messages ───────────────────────────────────────── */
+#chat-messages {
+  flex:1; overflow-y:auto; padding:20px 18px;
+  display:flex; flex-direction:column; gap:14px;
+  scroll-behavior:smooth; background:var(--offwhite);
+}
+#chat-messages::-webkit-scrollbar { width:5px; }
+#chat-messages::-webkit-scrollbar-track { background:transparent; }
+#chat-messages::-webkit-scrollbar-thumb { background:var(--border); border-radius:10px; }
+
+.msg-row {
+  display:flex; align-items:flex-end; gap:9px;
+  animation: msg-in 0.35s cubic-bezier(.34,1.28,.64,1) both;
+}
+@keyframes msg-in {
+  from { opacity:0; transform:translateY(12px) scale(0.97); }
+  to   { opacity:1; transform:translateY(0) scale(1); }
+}
+.msg-row.bot  { align-self:flex-start; }
+.msg-row.user { align-self:flex-end; flex-direction:row-reverse; }
+
+.msg-avatar {
+  width:30px; height:30px; border-radius:50%;
+  background:linear-gradient(135deg, var(--teal), var(--teal-dark));
+  display:flex; align-items:center; justify-content:center;
+  font-family:var(--font-display); font-size:0.8rem; color:white; font-style:italic;
+  flex-shrink:0; border:2px solid white; box-shadow:var(--shadow-sm);
+}
+
+/* bubble — base */
+.bubble {
+  max-width:80%; min-width:64px; padding:11px 15px;
+  line-height:1.58; font-size:0.91rem; font-weight:500;
+  overflow-wrap:break-word; word-break:normal;
+}
+.msg-row.bot .bubble {
+  background:white; color:var(--text);
+  border-radius:18px 18px 18px 4px; box-shadow:var(--shadow-sm);
+}
+.msg-row.user .bubble {
+  background:linear-gradient(135deg, var(--teal), var(--teal-dark));
+  color:white; border-radius:18px 18px 4px 18px;
+  box-shadow:0 3px 12px rgba(10,97,117,0.3);
+}
+
+/* text content inside bot bubbles */
+.bubble .text-segment p { margin-bottom:6px; }
+.bubble .text-segment p:last-child { margin-bottom:0; }
+.bubble .text-segment strong { font-weight:700; }
+.bubble .text-segment em     { font-style:italic; }
+.bubble .text-segment hr     { border:none; border-top:1px solid var(--border); margin:8px 0; }
+.bubble .text-segment ul     { padding-left:18px; margin:6px 0; }
+.bubble .text-segment li     { margin-bottom:4px; }
+.bubble .text-segment a      { color:var(--coral); font-weight:700; text-decoration:underline; }
+
+/* ─── Question card ──────────────────────────────────── */
+.q-card {
+  margin-top:10px; border-top:2px solid var(--teal-light); padding-top:10px;
+}
+.q-num {
+  font-size:0.72rem; font-weight:800; color:var(--teal);
+  letter-spacing:0.06em; text-transform:uppercase; margin-bottom:6px;
+}
+.q-text { font-weight:700; font-size:0.94rem; color:var(--text); margin-bottom:10px; }
+.q-options { display:flex; flex-direction:column; gap:5px; }
+.q-option {
+  display:flex; align-items:flex-start; gap:10px;
+  padding:8px 12px; border-radius:9px;
+  background:var(--teal-light); font-size:0.88rem;
+  border:1.5px solid transparent;
+  cursor:pointer; user-select:none;
+  transition:background 0.15s, border-color 0.15s, transform 0.1s;
+}
+.q-option:hover {
+  background:#c4e3eb; border-color:var(--teal);
+}
+.q-option:active { transform:scale(0.98); }
+.q-card.answered .q-option {
+  pointer-events:none; opacity:0.7; cursor:default;
+}
+.q-option .opt-letter { font-weight:800; color:var(--teal); min-width:18px; flex-shrink:0; }
+.q-hint { font-size:0.74rem; color:var(--text-muted); margin-top:8px; font-style:italic; }
+
+/* True/False layout */
+.q-options--tf { flex-direction:row; gap:10px; }
+.q-options--tf .q-option {
+  flex:1; justify-content:center; text-align:center;
+  font-weight:700; font-size:0.96rem; padding:10px 14px;
+}
+.q-options--tf .q-option .opt-letter { font-size:1rem; }
+
+/* ─── Result card ────────────────────────────────────── */
+.result-card {
+  background:linear-gradient(135deg, var(--teal-light), white);
+  border:1.5px solid var(--border); border-radius:14px;
+  padding:18px; margin-top:8px;
+}
+.result-score {
+  font-family:var(--font-display); font-size:2.2rem;
+  color:var(--teal); text-align:center; margin-bottom:4px;
+}
+.result-label { text-align:center; font-size:0.85rem; color:var(--text-muted); font-weight:700; margin-bottom:12px; }
+.result-body  { font-size:0.87rem; line-height:1.55; color:var(--text); margin-bottom:14px; }
+.result-cta {
+  display:block; text-align:center; background:var(--teal); color:white;
+  padding:11px 18px; border-radius:50px; font-weight:700; font-size:0.88rem;
+  text-decoration:none;
+  transition:background 0.2s, transform 0.15s; border:none; cursor:pointer;
+}
+.result-cta:hover { background:var(--teal-dark); transform:translateY(-1px); }
+.result-cta.retry { background:var(--coral); }
+.result-cta.retry:hover { background:#D4513A; }
+
+/* ─── Typing indicator ───────────────────────────────── */
+.typing-row { display:none; }
+.typing-row.show { display:flex; }
+.typing-bubble {
+  background:white; border-radius:18px 18px 18px 4px;
+  padding:12px 16px; box-shadow:var(--shadow-sm);
+  display:flex; gap:5px; align-items:center;
+}
+.typing-dot {
+  width:7px; height:7px; border-radius:50%;
+  background:var(--teal); opacity:0.5;
+  animation:typing-bounce 1.2s ease-in-out infinite;
+}
+.typing-dot:nth-child(2) { animation-delay:0.2s; }
+.typing-dot:nth-child(3) { animation-delay:0.4s; }
+@keyframes typing-bounce {
+  0%,80%,100% { transform:translateY(0);   opacity:0.4; }
+  40%          { transform:translateY(-6px);opacity:1;   }
+}
+
+/* ─── Input area ─────────────────────────────────────── */
+#chat-input-area {
+  background:white; border-top:1.5px solid var(--border);
+  padding:12px 16px; display:flex; gap:10px; align-items:center; flex-shrink:0;
+}
+#user-input {
+  flex:1; border:1.5px solid var(--border); border-radius:50px;
+  padding:10px 18px; font-family:var(--font-body);
+  font-size:0.9rem; font-weight:500; color:var(--text);
+  background:var(--offwhite); outline:none;
+  transition:border-color 0.2s, box-shadow 0.2s;
+}
+#user-input:focus { border-color:var(--teal); box-shadow:0 0 0 3px rgba(10,97,117,0.10); background:white; }
+#user-input::placeholder { color:var(--text-muted); }
+#user-input:disabled { opacity:0.55; cursor:not-allowed; }
+
+#send-btn {
+  width:42px; height:42px; border-radius:50%;
+  background:linear-gradient(135deg, var(--teal), var(--teal-dark));
+  border:none; cursor:pointer;
+  display:flex; align-items:center; justify-content:center; flex-shrink:0;
+  transition:transform 0.2s cubic-bezier(.34,1.56,.64,1), box-shadow 0.2s, opacity 0.2s;
+  box-shadow:0 3px 12px rgba(10,97,117,0.35); outline:none;
+}
+#send-btn:hover:not(:disabled) { transform:scale(1.1); box-shadow:0 5px 18px rgba(10,97,117,0.45); }
+#send-btn:active:not(:disabled) { transform:scale(0.93); }
+#send-btn:disabled { opacity:0.45; cursor:not-allowed; }
+
+.chat-footer-note {
+  text-align:center; font-size:0.71rem; color:var(--text-muted);
+  padding:5px 0 9px; letter-spacing:0.01em;
+}
+
+/* Rate-limit warning banner */
+#rate-warning {
+  display:none; background:#FFF3CD; border-top:1px solid #FFD966;
+  padding:6px 14px; font-size:0.78rem; color:#7A5A00; font-weight:600; text-align:center;
+}
+
+@media (max-width:520px) {
+  #chat-window { height:92vh; border-radius:20px; }
+  #chat-overlay { padding:12px; }
+}
+
+/* ─── Character strip — own row, never overlaps content ─ */
+#char-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 6px 0 4px;
+  flex-shrink: 0;
+  position: relative;
+  overflow: visible;
+  background: var(--offwhite);
+  height: 100px;
+}
+
+/* ── image swap transition ── */
+#char-img {
+  height: 85px; width: auto; object-fit: contain;
+  filter: drop-shadow(0 4px 12px rgba(10,97,117,0.15));
+  transform-origin: bottom center;
+  position: relative; z-index: 2;
+}
+#char-img.switching { opacity: 0; transform: scale(0.88) translateY(8px); transition: opacity 0.18s, transform 0.18s; }
+#char-img.visible   { opacity: 1; transform: scale(1) translateY(0);      transition: opacity 0.22s, transform 0.22s; }
+
+/* ── per-mood continuous animations applied to #char-img ── */
+#char-img.mood-greeting { animation: anim-greeting 2.2s ease-in-out infinite; }
+#char-img.mood-happy    { animation: anim-happy    0.7s ease-in-out infinite; }
+#char-img.mood-sad      { animation: anim-sad      2.8s ease-in-out infinite; }
+#char-img.mood-cheering { animation: anim-cheering 0.65s ease-in-out infinite; }
+#char-img.mood-tired    { animation: anim-tired    3.5s ease-in-out infinite; }
+#char-img.mood-think    { animation: anim-think    2.0s ease-in-out infinite; }
+
+@keyframes anim-greeting {
+  0%,100% { transform: translateY(0) rotate(-4deg) scale(1); }
+  25%     { transform: translateY(-10px) rotate(3deg) scale(1.04); }
+  75%     { transform: translateY(-5px)  rotate(-2deg) scale(1.02); }
+}
+@keyframes anim-happy {
+  0%,100% { transform: translateY(0)    scale(1); }
+  40%     { transform: translateY(-18px) scale(1.07); }
+  70%     { transform: translateY(-10px) scale(1.03); }
+}
+@keyframes anim-sad {
+  0%,100% { transform: translateY(0)  rotate(0deg)  scale(1); }
+  30%     { transform: translateY(5px) rotate(-5deg) scale(0.97); }
+  70%     { transform: translateY(5px) rotate(5deg)  scale(0.97); }
+}
+@keyframes anim-cheering {
+  0%,100% { transform: translateY(0)    scale(1)    rotate(0deg); }
+  25%     { transform: translateY(-22px) scale(1.12) rotate(-6deg); }
+  50%     { transform: translateY(-10px) scale(1.06) rotate(6deg); }
+  75%     { transform: translateY(-18px) scale(1.09) rotate(-4deg); }
+}
+@keyframes anim-tired {
+  0%,60%,100% { transform: translateY(0)  rotate(0deg)  scale(1); }
+  40%         { transform: translateY(8px) rotate(8deg)  scale(0.96); }
+  80%         { transform: translateY(5px) rotate(-3deg) scale(0.97); }
+}
+@keyframes anim-think {
+  0%,100% { transform: translateY(0)   rotate(-6deg) scale(1); }
+  50%     { transform: translateY(-5px) rotate(6deg)  scale(1.02); }
+}
+
+/* ── mood label ── */
+#char-mood {
+  font-size: 0.68rem; font-weight: 800; color: var(--teal);
+  letter-spacing: 0.06em; text-transform: uppercase;
+  margin-top: 2px; opacity: 0.75; height: 12px;
+  transition: opacity 0.3s;
+  position: relative; z-index: 2;
+}
+
+/* ── effects layer (particles, sparkles, teardrops, zzz) ── */
+#char-effects {
+  position: absolute; inset: 0; pointer-events: none;
+  overflow: visible; z-index: 1;
+}
+.fx-particle {
+  position: absolute; border-radius: 50%;
+  animation: fx-fall linear infinite;
+  opacity: 0;
+}
+@keyframes fx-fall {
+  0%   { opacity:0;   transform: translateY(-20px) rotate(0deg); }
+  10%  { opacity:0.9; }
+  90%  { opacity:0.7; }
+  100% { opacity:0;   transform: translateY(150px) rotate(360deg); }
+}
+.fx-sparkle {
+  position: absolute; font-size: 1rem;
+  animation: fx-sparkle ease-in-out infinite;
+  opacity: 0;
+}
+@keyframes fx-sparkle {
+  0%,100% { opacity:0;   transform: scale(0.4) translateY(0); }
+  50%     { opacity:1;   transform: scale(1.2) translateY(-12px); }
+}
+.fx-tear {
+  position: absolute; width: 7px; height: 10px;
+  background: #6bb8e8; border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  animation: fx-tear ease-in infinite;
+  opacity: 0;
+}
+@keyframes fx-tear {
+  0%   { opacity:0;   transform: rotate(-45deg) translateY(0); }
+  15%  { opacity:0.9; }
+  100% { opacity:0;   transform: rotate(-45deg) translateY(40px); }
+}
+.fx-zzz {
+  position: absolute; font-weight: 900; color: var(--text-muted);
+  animation: fx-zzz ease-out infinite;
+  opacity: 0;
+}
+@keyframes fx-zzz {
+  0%   { opacity:0;   transform: translate(0,0)      scale(0.6); }
+  30%  { opacity:0.9; }
+  100% { opacity:0;   transform: translate(12px,-28px) scale(1.1); }
+}
+
+</style>
+</head>
+
+<body>
+
+<!-- ════════ DEMO BACKDROP ════════ -->
+<div class="demo-page">
+  <h1>D'DRIVEN Learning Hub</h1>
+  <p>Welcome to the DEI training portal for creating Deaf-friendly workplaces.
+     Click the button in the bottom-right to meet Iris, your learning assistant!</p>
+  <div class="demo-hint">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+    Click the teal button in the bottom-right corner
+  </div>
+</div>
+
+<!-- ════════ LAUNCHER ════════ -->
+<button id="chat-launcher" aria-label="Open Iris chatbot">
+  <span class="notif-dot" aria-hidden="true"></span>
+  <img class="launcher-icon" src="icon.png" alt="" />
+  <svg class="launcher-close" width="22" height="22" viewBox="0 0 24 24" fill="none"
+       stroke="white" stroke-width="2.5" stroke-linecap="round">
+    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+  </svg>
+</button>
+
+<!-- ════════ CHAT WINDOW ════════ -->
+<div id="chat-overlay" role="dialog" aria-label="Iris — DEI Learning Chatbot" aria-modal="true">
+  <div id="chat-window">
+
+    <div id="chat-header">
+      <div class="bot-avatar-wrap">
+        <img id="bot-avatar-img" src="" alt="Iris" style="display:block;width:100%;height:100%;object-fit:cover;" />
+        <span class="avatar-fallback" aria-hidden="true" style="display:none">I</span>
+      </div>
+      <div class="bot-info">
+        <div class="bot-name">Iris</div>
+        <div class="bot-subtitle">D'DRIVEN Learning Assistant</div>
+      </div>
+      <div class="online-badge" aria-label="Online">
+        <span class="online-dot" aria-hidden="true"></span> Online
+      </div>
+      <button class="close-btn" id="close-btn" aria-label="Close chat">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+
+    <div id="quiz-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+      <div id="quiz-progress-fill"></div>
+    </div>
+    <div id="progress-label" aria-live="polite"></div>
+
+    <!-- Character lives here — her own row, never overlaps messages -->
+    <div id="char-panel">
+      <div id="char-effects"></div>
+      <img id="char-img" src="" alt="Iris" class="visible" />
+      <div id="char-mood"></div>
+    </div>
+
+    <div id="chat-messages" role="log" aria-live="polite" aria-label="Chat messages">
+      <!-- Typing indicator -->
+      <div class="msg-row bot typing-row" id="typing-indicator" aria-label="Iris is typing">
+        <div class="msg-avatar" aria-hidden="true">I</div>
+        <div class="typing-bubble" aria-hidden="true">
+          <div class="typing-dot"></div>
+          <div class="typing-dot"></div>
+          <div class="typing-dot"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="rate-warning" role="alert">⏳ Please slow down — one message at a time!</div>
+
+    <div id="chat-input-area">
+      <input type="text" id="user-input"
+             placeholder="Type your message…"
+             autocomplete="off"
+             maxlength="300"
+             aria-label="Your message"
+             spellcheck="false" />
+      <button id="send-btn" aria-label="Send message" disabled>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+             stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="22" y1="2" x2="11" y2="13"/>
+          <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+        </svg>
+      </button>
+    </div>
+    <div class="chat-footer-note">Powered by D'DRIVEN · EU Project 2022-1-ES01-KA220-ADU-000089697</div>
+  </div>
+</div>
+
+<script>
+const AVATARS = {
+  WAVE:     'greeting_bot.png',
+  HAPPY:    'happy_bot.png',
+  SAD:      'sad_bot.png',
+  YAY:      'cheering_bot.png',
+  THINK:    'thinking_bot.png',  
+  TIRED:    'tired_bot.png',
+};
+
+/* ════════════════════════════════════════════════════════
+   ██████████████████████████████████████████████████████
+   CONFIGURATION — edit these before deploying
+   ██████████████████████████████████████████████████████
+════════════════════════════════════════════════════════ */
+const CONFIG = {
+  USE_BACKEND:   false,                  // true = call Flask; false = JS engine
+  BACKEND_URL:   'http://localhost:5000',
+  MAX_INPUT_LEN: 300,                    // hard cap on user message length
+  RATE_LIMIT_MS: 1000,                   // min ms between sends (anti-spam)
+  TYPING_DELAY_BASE: 700,                // simulate typing (ms)
+  TYPING_DELAY_RAND: 500,               // + random jitter (ms)
+};
+
+/* ════════════════════════════════════════════════════════
+   LESSON DATA — Module 1
+════════════════════════════════════════════════════════ */
+const LESSON = {
+  id:      'module_1',
+  title:   "Module 1: Building Awareness of DHH Needs",
+  url:     'https://yoursite.com/lessons/module-1',
+  nextUrl: 'https://yoursite.com/lessons/module-2',
+  questions: [
+    { id:1,
+      q: "What does DHH stand for?",
+      opts: { A:"Deaf, Hearing, and Hard-working", B:"Deaf and Hard-of-Hearing",
+              C:"Diverse Hearing Habits", D:"Disability for Hearing Humans" },
+      ans:"B",
+      exp:"DHH stands for **Deaf and Hard-of-Hearing** — an inclusive umbrella term covering the full spectrum of hearing loss, from mild to profound." },
+
+    { id:2,
+      q: "Which of the following is a key benefit of an inclusive workplace for DHH individuals?",
+      opts: { A:"Reduced employee turnover and higher job satisfaction",
+              B:"Fewer communication methods needed across the team",
+              C:"Less need for legal compliance overall",
+              D:"Simplified hiring processes for HR" },
+      ans:"A",
+      exp:"Inclusive workplaces boost **employee satisfaction and retention** for all staff. When DHH individuals feel valued, everyone benefits." },
+
+    { id:3, type:'tf',
+      q: "DHH individuals can only communicate effectively using sign language.",
+      opts: { T:"True", F:"False" },
+      ans:"F",
+      exp:"Sign language is just one of many communication methods. DHH individuals may also use **lip reading, written notes, captioning, speech, or assistive technology** — preferences vary by person and context." },
+
+    { id:4,
+      q: "Which of the following is an example of assistive technology that supports DHH workers?",
+      opts: { A:"Mandatory hearing aids provided by the employer",
+              B:"Communication devices, captioning tools, and screen readers",
+              C:"Background noise reduction headphones for all staff",
+              D:"A dedicated quiet room away from the main office" },
+      ans:"B",
+      exp:"**Real-time captioning, communication devices, and visual alert systems** directly support DHH workers in accessing information and communicating effectively." },
+
+    { id:5, type:'tf',
+      q: "Providing workplace accommodations for DHH employees is legally required in most countries.",
+      opts: { T:"True", F:"False" },
+      ans:"T",
+      exp:"Yes! Disability rights legislation such as the **ADA** (USA), **Equality Act** (UK), and **EU Employment Equality Directive** require employers to provide reasonable accommodations for DHH workers." },
+
+    { id:6,
+      q: "Disability discrimination laws in the workplace primarily aim to:",
+      opts: { A:"Guarantee DHH individuals higher salaries than hearing peers",
+              B:"Ensure equal opportunities and prevent discriminatory practices",
+              C:"Require all companies to hire a fixed quota of DHH employees",
+              D:"Make sign language mandatory for all employees" },
+      ans:"B",
+      exp:"Disability rights legislation is designed to **ensure equal opportunities and prohibit discrimination** — creating a level playing field for DHH individuals." },
+
+    { id:7,
+      q: "Which of the following communication methods is commonly used by DHH individuals?",
+      opts: { A:"Morse code and tactile signals",
+              B:"Sign language and lip reading",
+              C:"Writing in Braille only",
+              D:"Exclusively text-to-speech software" },
+      ans:"B",
+      exp:"**Sign language and lip reading** are widely used, though preferences vary by individual background, culture, and degree of hearing loss. Always ask what the person prefers." },
+
+    { id:8, type:'tf',
+      q: "An inclusive workplace only benefits DHH employees, not hearing employees.",
+      opts: { T:"True", F:"False" },
+      ans:"F",
+      exp:"Inclusion benefits **everyone**. Removing barriers fosters better collaboration, creativity, and morale for all staff — hearing and DHH alike." },
+
+    { id:9,
+      q: "What is the most important first step in building an inclusive workplace for DHH individuals?",
+      opts: { A:"Installing visual fire alarm systems immediately",
+              B:"Developing awareness and understanding of DHH needs and challenges",
+              C:"Hiring a full-time sign language interpreter",
+              D:"Conducting an annual legal compliance audit" },
+      ans:"B",
+      exp:"**Awareness and understanding are the foundation** of inclusion. Before tools or policies, employers must first understand the challenges DHH individuals face and value their perspectives." },
+
+    { id:10, type:'tf',
+      q: "The D'DRIVEN program aims to create legally compliant, genuinely inclusive workplaces for DHH individuals.",
+      opts: { T:"True", F:"False" },
+      ans:"T",
+      exp:"Exactly right! D'DRIVEN transforms workplaces into environments that are **legally compliant, genuinely inclusive, and supportive** — so DHH individuals can reach their full potential." },
+  ]
+};
+
+/* ════════════════════════════════════════════════════════
+   KNOWLEDGE BASE
+════════════════════════════════════════════════════════ */
+const KB = [
+  { kw:['dhh','stand for','mean','abbreviation','acronym'],
+    a:"**DHH** stands for **Deaf and Hard-of-Hearing**. It's an inclusive term covering the full spectrum of hearing loss. Some people identify with capital-D 'Deaf' culture, while others prefer 'hard-of-hearing'. Respecting individual preferences is key to inclusion!" },
+  { kw:['sign language','asl','bsl','how to communicate','communicate with'],
+    a:"Sign languages are complete, natural languages with their own grammar and vocabulary. **ASL** and **BSL** are two of hundreds worldwide. Many DHH individuals also use lip reading, written notes, or assistive tech. The best approach? Ask the individual what works best for them." },
+  { kw:['assistive technology','tools','software','caption','captioning','screen reader','devices'],
+    a:"Assistive technologies for DHH workers include:\n• **Real-time captioning (CART)** for meetings\n• **Video relay services** for phone calls\n• **Visual alert systems** (flashing lights for alarms)\n• **Auto-captioned video calls** (Teams, Zoom)\n\nThe right tool depends on the individual's preferences and work context." },
+  { kw:['discrimination','law','legal','rights','ada','equality act','legislation'],
+    a:"DHH individuals are protected by disability rights laws in most countries. In the **USA**, the ADA requires reasonable accommodations. In the **UK**, the Equality Act 2010 covers disability discrimination. The **EU** has the Employment Equality Directive. Employers must provide reasonable accommodations." },
+  { kw:['stereotype','bias','perception','assumption','myth','misconception'],
+    a:"Common myths include: DHH individuals can't do certain jobs, communication is always a major barrier, or accommodations are too expensive. In reality, most accommodations are low-cost, and DHH employees bring unique perspectives and skills." },
+  { kw:['accommodation','workplace support','adjust','modify','what can i do'],
+    a:"Workplace accommodations can include:\n• Sign language interpreters for meetings\n• Written summaries of verbal discussions\n• Captioned training videos\n• Visual notification systems\n• Flexible seating to support lip reading\n\nAlways ask the employee directly what they need!" },
+];
+
+/* ════════════════════════════════════════════════════════
+   CONVERSATION STATE
+════════════════════════════════════════════════════════ */
+const STATE = {
+  phase:         'GREETING',   // GREETING | WELLBEING | QUIZ_INTRO | QUIZ | RESULT
+  greeted:       false,
+  questionIndex: 0,
+  score:         0,
+  totalQ:        LESSON.questions.length,
+};
+
+/* ════════════════════════════════════════════════════════
+   UTILITIES
+════════════════════════════════════════════════════════ */
+const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+
+/**
+ * Sanitise a plain-text string so it cannot inject HTML when set via
+ * textContent or later embedded in a safe container.
+ * NOTE: for bot *text* segments we also HTML-encode via escapeHtml
+ *       before inserting with innerHTML — see renderMarkdown().
+ */
+function sanitiseInput(raw) {
+  // Trim, collapse whitespace, enforce hard length cap
+  return String(raw).trim().replace(/\s+/g, ' ').slice(0, CONFIG.MAX_INPUT_LEN);
+}
+
+/** Escape for safe innerHTML insertion (text-only segments). */
+function escapeHtml(s) {
+  return s
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#x27;');
+}
+
+/**
+ * renderMarkdown — converts our limited markdown to safe HTML.
+ * Input is ALREADY html-escaped so **bold** etc are applied on safe text.
+ */
+function renderMarkdown(raw) {
+  let s = escapeHtml(raw);
+
+  // Bold / italic
+  s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  s = s.replace(/\*(.+?)\*/g,     '<em>$1</em>');
+
+  // Bullet items (• or -)
+  s = s.replace(/^[•\-]\s(.+)$/gm, '<li>$1</li>');
+
+  // Horizontal rule
+  s = s.replace(/^---$/gm, '<hr>');
+
+  // Wrap paragraphs (split on blank lines)
+  const blocks = s.split(/\n\n+/);
+  s = blocks.map(b => {
+    if (/^<(li|hr|ul)/.test(b.trim())) {
+      // Wrap consecutive <li> in <ul>
+      return b.includes('<li>') ? `<ul>${b}</ul>` : b;
+    }
+    return `<p>${b.replace(/\n/g, '<br>')}</p>`;
+  }).join('');
+
+  return s;
+}
+
+/* ════════════════════════════════════════════════════════
+   MESSAGE SEGMENT BUILDERS
+   Each builder returns an array of segments:
+     { type: 'text', content: '...' }   → rendered via renderMarkdown (XSS-safe)
+     { type: 'html', content: '...' }   → inserted directly (trusted internal HTML only)
+   This is the fix: text and HTML never get mixed into one string,
+   so HTML tags can never accidentally be printed as raw text.
+════════════════════════════════════════════════════════ */
+
+/** Build the question display card with clickable options. */
+function buildQuestionHTML(q, idx, total) {
+  const isTF = q.type === 'tf';
+  const opts = Object.entries(q.opts).map(([l, text]) => {
+    const safeText = escapeHtml(text);
+    return `<div class="q-option" data-letter="${l}" role="button" tabindex="0" aria-label="${safeText}">
+              <span class="opt-letter">${l}</span>
+              <span>${safeText}</span>
+            </div>`;
+  }).join('');
+  const safeQ = escapeHtml(q.q);
+  const optClass = isTF ? 'q-options q-options--tf' : 'q-options';
+  const hint = isTF
+    ? '💬 Click <strong>True</strong> or <strong>False</strong>, or type T / F below.'
+    : '💬 Click an option, or type <strong>A</strong>, <strong>B</strong>, <strong>C</strong>, or <strong>D</strong> below.';
+  return `<div class="q-card">
+    <div class="q-num">Question ${idx + 1} of ${total}</div>
+    <div class="q-text">${safeQ}</div>
+    <div class="${optClass}">${opts}</div>
+    <div class="q-hint">${hint}</div>
+  </div>`;
+}
+
+/** Build the result card (trusted internal HTML). */
+function buildResultHTML(score, total, lesson) {
+  const pct    = Math.round((score / total) * 100);
+  const passed = pct >= 90;
+  const label  = passed ? 'Passed! ✅' : 'Keep going! 💪';
+  const msg    = passed
+    ? "You've demonstrated a strong understanding of DHH awareness and workplace inclusion. Excellent work!"
+    : "You're building a solid foundation! A score of 90%+ unlocks the next module. Reviewing the lesson will help you get there.";
+  const btnClass = passed ? ''      : 'retry';
+  const btnText  = passed ? '👉 Continue to Module 2' : '📖 Revisit Module 1';
+  const btnHref  = passed ? escapeHtml(lesson.nextUrl) : escapeHtml(lesson.url);
+
+  return `<div class="result-card">
+    <div class="result-score">${score}/${total}</div>
+    <div class="result-label">${pct}% — ${label}</div>
+    <div class="result-body">${msg}</div>
+    <a href="${btnHref}" target="_blank" rel="noopener noreferrer"
+       class="result-cta ${btnClass}">${btnText}</a>
+  </div>`;
+}
+
+/* ════════════════════════════════════════════════════════
+   RESPONSE POOLS
+════════════════════════════════════════════════════════ */
+const R = {
+  greetings:   [
+    "Hey there! 👋 I'm **Iris**, your D'DRIVEN learning assistant. How are you doing today?",
+    "Hi! Welcome to the D'DRIVEN DEI learning hub. I'm **Iris** — great to have you here! How's your day going?",
+    "Hello! I'm **Iris**, here to make workplace inclusion learning a little more engaging. 😊 How are you today?",
+  ],
+  wellbeing_pos: [
+    "That's wonderful to hear! 😊 Ready to dive into something meaningful?",
+    "Love that energy! Let's make the most of it.",
+    "Fantastic! You're in the right headspace for learning.",
+  ],
+  wellbeing_neg: [
+    "I'm sorry to hear that. 💙 I hope things look up soon! A short learning session can sometimes be a nice break.",
+    "Aw, hang in there. 💙 No pressure at all — take it at your own pace.",
+    "Sorry you're having a rough time. We'll keep things light and engaging!",
+  ],
+  correct:   ["✅ Excellent! That's exactly right.","✅ Spot on! Well done.","✅ Correct! You're on a roll!","✅ That's right! Great thinking.","✅ Perfect! You nailed it."],
+  incorrect: ["Not quite, but that's okay! The correct answer was","Good try! The right answer is","Almost there! The answer was","Don't sweat it — the correct answer is"],
+  encourage: ["Keep going, you're doing great! 💪","Nice work so far!","You're making great progress!","Onwards! 🚀"],
+  confusion: [
+    "No problem! Just type the **letter** of your answer — **A**, **B**, **C**, or **D**. I'll handle the rest. 😊",
+    "Easy fix! Simply type one of these letters: **A**, **B**, **C**, or **D**.",
+    "Don't worry — just type e.g. **B** and we'll move forward. 😊",
+  ],
+  help: "Sure! Here's how it works:\n\n1️⃣ I'll ask a multiple-choice question\n2️⃣ You type the letter of your answer (A, B, C, or D)\n3️⃣ I'll tell you if you're right and explain why\n4️⃣ At the end you'll see your score and next steps\n\nYou can also ask me questions about the lesson at any time. Ready when you are! 😊",
+};
+
+/* ════════════════════════════════════════════════════════
+   INTENT DETECTION
+════════════════════════════════════════════════════════ */
+function detectIntent(t) {
+  t = t.toLowerCase().trim();
+  if (/^[abcdtf]$/.test(t) || /^(true|false)$/.test(t) ||
+      /\b(answer\s*is|i\s*(choose|pick|select|think|go\s*with))\s*[abcdtf]\b/.test(t) ||
+      /\b(answer\s*is|i\s*(choose|pick|select|think|go\s*with))\s*(true|false)\b/.test(t)) return 'ANSWER';
+  if (/\b(hello|hi|hey|howdy|greetings|good\s*(morning|afternoon|evening))\b/.test(t)) return 'GREETING';
+  if (/\b(great|good|fine|well|fantastic|wonderful|amazing|excellent|not\s*bad|pretty\s*good|doing\s*well|happy|excited)\b/.test(t)) return 'WB_POS';
+  if (/\b(bad|tired|not\s*(great|good|okay|well)|terrible|awful|stressed|rough|sad|meh)\b/.test(t)) return 'WB_NEG';
+  if (/\b(start|begin|ready|let'?s\s*go|go\s*ahead|ok|okay|sure|yes|yep|yeah|absolutely|sounds\s*good)\b/.test(t)) return 'START';
+  if (/\b(help|how\s*does\s*this\s*work|instructions|guide|what\s*(do|should)\s*i\s*do)\b/.test(t)) return 'HELP';
+  if (/\b(confused|don'?t\s*understand|huh|unclear|lost|not\s*sure\s*(what|how)|what\s*(do\s*you\s*mean|now))\b/.test(t)) return 'CONFUSED';
+  if (/\b(what|how|why|tell\s*me|explain|describe|define|meaning|difference)\b/.test(t)) return 'QUESTION';
+  return 'UNKNOWN';
+}
+
+function extractLetter(t) {
+  const lower = t.toLowerCase().trim();
+  if (/\btrue\b/.test(lower)) return 'T';
+  if (/\bfalse\b/.test(lower)) return 'F';
+  const m = lower.match(/\b([abcdtf])\b/);
+  if (!m) return '';
+  if (m[1] === 't') return 'T';
+  if (m[1] === 'f') return 'F';
+  return m[1].toUpperCase();
+}
+
+function searchKB(t) {
+  t = t.toLowerCase();
+  for (const entry of KB) {
+    if (entry.kw.some(k => t.includes(k))) return entry.a;
+  }
+  return null;
+}
+
+
+/* ════════════════════════════════════════════════════════
+   CHARACTER EMOTION + ANIMATIONS
+════════════════════════════════════════════════════════ */
+const MOOD_LABELS = {
+  WAVE:  "Hello! 👋",
+  HAPPY: "Great job! ✨",
+  SAD:   "Oops! 😢",
+  YAY:   "Amazing! 🎉",
+  THINK: "Hmm… 🤔",
+  TIRED: "Review & retry! 💪",
+};
+
+// Map mood → CSS animation class on #char-img
+const MOOD_CLASS = {
+  WAVE:  'mood-greeting',
+  HAPPY: 'mood-happy',
+  SAD:   'mood-sad',
+  YAY:   'mood-cheering',
+  THINK: 'mood-think',
+  TIRED: 'mood-tired',
+};
+
+// Particle effect definitions
+const MOOD_FX = {
+  HAPPY: () => spawnSparkles(),
+  YAY:   () => spawnConfetti(),
+  SAD:   () => spawnTears(),
+  TIRED: () => spawnZzz(),
+  WAVE:  () => {},
+  THINK: () => {},
+};
+
+let currentMood = null;
+let fxInterval  = null;
+
+function setMood(mood) {
+  if (mood === currentMood) return;
+  currentMood = mood;
+
+  const img    = document.getElementById('char-img');
+  const label  = document.getElementById('char-mood');
+  const hdrImg = document.getElementById('bot-avatar-img');
+  const fx     = document.getElementById('char-effects');
+
+  // Stop old effects
+  if (fxInterval) { clearInterval(fxInterval); fxInterval = null; }
+  if (fx) fx.innerHTML = '';
+
+  // Update header avatar
+  if (hdrImg) hdrImg.src = AVATARS[mood] || AVATARS.WAVE;
+  if (!img) return;
+
+  // Swap image with fade
+  img.classList.remove('visible');
+  img.classList.add('switching');
+  // Remove all mood classes
+  Object.values(MOOD_CLASS).forEach(c => img.classList.remove(c));
+
+  setTimeout(() => {
+    img.src = AVATARS[mood] || AVATARS.WAVE;
+    if (label) label.textContent = MOOD_LABELS[mood] || '';
+    img.classList.remove('switching');
+    img.classList.add('visible', MOOD_CLASS[mood] || '');
+
+    // Start particles
+    const spawnFn = MOOD_FX[mood];
+    if (spawnFn) {
+      spawnFn();
+      // Repeat effects every few seconds
+      if (mood === 'HAPPY' || mood === 'YAY' || mood === 'SAD' || mood === 'TIRED') {
+        fxInterval = setInterval(spawnFn, mood === 'YAY' ? 1800 : 2800);
+      }
+    }
+  }, 190);
+}
+
+/* ── Particle helpers ─────────────────────────────── */
+function spawnConfetti() {
+  const fx = document.getElementById('char-effects');
+  if (!fx) return;
+  const colors = ['#F5A623','#E8624A','#0A6175','#4ADE80','#A855F7','#FBBF24'];
+  for (let i = 0; i < 18; i++) {
+    const p = document.createElement('div');
+    p.className = 'fx-particle';
+    const size = 5 + Math.random() * 7;
+    p.style.cssText = `
+      width:${size}px; height:${size}px;
+      background:${colors[Math.floor(Math.random()*colors.length)]};
+      border-radius:${Math.random()>0.5?'50%':'3px'};
+      left:${5 + Math.random()*90}%;
+      top:${-10 + Math.random()*20}px;
+      animation-duration:${1.2+Math.random()*1.4}s;
+      animation-delay:${Math.random()*0.8}s;
+    `;
+    fx.appendChild(p);
+    setTimeout(() => p.remove(), 3200);
+  }
+}
+
+function spawnSparkles() {
+  const fx = document.getElementById('char-effects');
+  if (!fx) return;
+  const stars = ['✦','✧','⭐','✨','★'];
+  for (let i = 0; i < 6; i++) {
+    const s = document.createElement('div');
+    s.className = 'fx-sparkle';
+    s.textContent = stars[Math.floor(Math.random()*stars.length)];
+    s.style.cssText = `
+      left:${10+Math.random()*80}%;
+      top:${10+Math.random()*70}%;
+      font-size:${0.7+Math.random()*0.8}rem;
+      animation-duration:${0.9+Math.random()*0.8}s;
+      animation-delay:${Math.random()*0.6}s;
+      color:${['#F5A623','#FFD700','#0A6175'][Math.floor(Math.random()*3)]};
+    `;
+    fx.appendChild(s);
+    setTimeout(() => s.remove(), 2200);
+  }
+}
+
+function spawnTears() {
+  const fx = document.getElementById('char-effects');
+  if (!fx) return;
+  for (let i = 0; i < 3; i++) {
+    const t = document.createElement('div');
+    t.className = 'fx-tear';
+    t.style.cssText = `
+      left:${30+Math.random()*40}%;
+      top:${20+Math.random()*30}%;
+      animation-duration:${1.1+Math.random()*0.8}s;
+      animation-delay:${Math.random()*0.5}s;
+    `;
+    fx.appendChild(t);
+    setTimeout(() => t.remove(), 2500);
+  }
+}
+
+function spawnZzz() {
+  const fx = document.getElementById('char-effects');
+  if (!fx) return;
+  ['z','Z','Z'].forEach((z, i) => {
+    const el = document.createElement('div');
+    el.className = 'fx-zzz';
+    el.textContent = z;
+    el.style.cssText = `
+      right:${18+i*12}%;
+      top:${15+i*10}%;
+      font-size:${0.65+i*0.18}rem;
+      animation-duration:${1.6+i*0.4}s;
+      animation-delay:${i*0.5}s;
+    `;
+    fx.appendChild(el);
+    setTimeout(() => el.remove(), 3800);
+  });
+}
+
+/* ════════════════════════════════════════════════════════
+   PROGRESS BAR
+════════════════════════════════════════════════════════ */
+function showProgressBar() {
+  document.getElementById('quiz-progress-bar').style.display = 'block';
+  document.getElementById('progress-label').style.display = 'block';
+}
+function hideProgressBar() {
+  setTimeout(() => {
+    document.getElementById('quiz-progress-bar').style.display = 'none';
+    document.getElementById('progress-label').style.display = 'none';
+  }, 800);
+}
+function setProgress(done, total) {
+  const pct = Math.round((done / total) * 100);
+  const bar = document.getElementById('quiz-progress-fill');
+  const lbl = document.getElementById('progress-label');
+  bar.style.width = pct + '%';
+  bar.closest('[role="progressbar"]').setAttribute('aria-valuenow', pct);
+  lbl.textContent = `${done} / ${total} questions`;
+}
+
+/* ════════════════════════════════════════════════════════
+   CORE RESPONSE ENGINE — returns segment arrays
+   [ { type:'text'|'html', content:string }, ... ]
+════════════════════════════════════════════════════════ */
+function botRespond(userText) {
+  const t      = detectIntent(userText);
+  const q      = LESSON.questions[STATE.questionIndex];
+  const total  = STATE.totalQ;
+  const lesson = LESSON;
+  let segs     = [];  // segments array
+
+  const txt  = s          => ({ type:'text', content: s });
+  const html = s          => ({ type:'html', content: s });
+  const qCard = (idx)     => html(buildQuestionHTML(LESSON.questions[idx], idx, total));
+
+  /* ── GREETING ── */
+  if (STATE.phase === 'GREETING') {
+    setMood('WAVE');
+    segs = [txt(pick(R.greetings))];
+    STATE.greeted = true;
+    STATE.phase   = 'WELLBEING';
+
+  /* ── WELLBEING ── */
+  } else if (STATE.phase === 'WELLBEING') {
+    if (t === 'WB_POS' || t === 'START') {
+      setMood('HAPPY');
+      segs = [
+        txt(`${pick(R.wellbeing_pos)}\n\nToday we'll explore **${lesson.title}** — a foundational module on understanding the needs of Deaf and Hard-of-Hearing (DHH) individuals in the workplace.\n\nThe quiz has **${total} questions**. Say **'start'** when you're ready!`),
+      ];
+      STATE.phase = 'QUIZ_INTRO';
+    } else if (t === 'WB_NEG') {
+      setMood('SAD');
+      segs = [txt(`${pick(R.wellbeing_neg)}\n\nToday's module is **${lesson.title}** — ${total} quick questions, about 5 minutes. Say **'start'** whenever you're ready!`)];
+      STATE.phase = 'QUIZ_INTRO';
+    } else if (t === 'HELP') {
+      segs = [txt(R.help)];
+    } else if (t === 'GREETING') {
+      segs = [txt("How are you feeling today?")];
+    } else {
+      segs = [txt(`I'm glad you're here! 😊 We're covering **${lesson.title}** today — ${total} multiple-choice questions. How are you feeling? Ready to jump in?`)];
+    }
+
+  /* ── QUIZ_INTRO ── */
+  } else if (STATE.phase === 'QUIZ_INTRO') {
+    if (/start|ready|begin|yes|ok|okay|sure|yep|yeah|let'?s/i.test(userText) || t === 'START' || t === 'WB_POS') {
+      STATE.phase         = 'QUIZ';
+      STATE.questionIndex = 0;
+      showProgressBar();
+      setProgress(0, total);
+      setMood('THINK');
+      segs = [txt("Great! Let's get started. 🎉"), qCard(0)];
+    } else if (t === 'QUESTION') {
+      const kb = searchKB(userText);
+      segs = kb
+        ? [txt(kb + '\n\nSay **\'start\'** whenever you\'re ready to begin!')]
+        : [txt("That's a great question! We'll cover related content in the quiz. Say **'start'** when you're ready! 🚀")];
+    } else if (t === 'HELP') {
+      segs = [txt(R.help)];
+    } else {
+      segs = [txt("Whenever you're ready, just say **'start'** and we'll dive in! 🚀")];
+    }
+
+  /* ── QUIZ ── */
+  } else if (STATE.phase === 'QUIZ') {
+    const currentQ = LESSON.questions[STATE.questionIndex];
+
+    if (t === 'ANSWER') {
+      const letter     = extractLetter(userText);
+      const validKeys  = Object.keys(currentQ.opts);
+      const isTF       = currentQ.type === 'tf';
+      const confMsg    = isTF
+        ? "No problem! Just click **True** or **False**, or type **T** or **F** below. 😊"
+        : pick(R.confusion);
+      if (!letter || !validKeys.includes(letter)) {
+        segs = [txt(confMsg), qCard(STATE.questionIndex)];
+      } else {
+        markCurrentCardAnswered();
+        const correct = letter === currentQ.ans;
+        if (correct) STATE.score++;
+        STATE.questionIndex++;
+        setProgress(STATE.questionIndex, total);
+
+        const feedback = correct
+          ? txt(`${pick(R.correct)}\n\n💡 ${currentQ.exp}`)
+          : txt(`❌ ${pick(R.incorrect)} **${currentQ.ans}) ${currentQ.opts[currentQ.ans]}**\n\n💡 ${currentQ.exp}`);
+
+        if (STATE.questionIndex < total) {
+          const enc = STATE.score > 0 ? txt(pick(R.encourage)) : null;
+          if (correct) { setMood('HAPPY'); setTimeout(()=>setMood('THINK'),1800); } else { setMood('SAD'); setTimeout(()=>setMood('THINK'),1800); }
+          segs = enc
+            ? [feedback, enc, qCard(STATE.questionIndex)]
+            : [feedback, qCard(STATE.questionIndex)];
+        } else {
+          // Quiz finished
+          STATE.phase = 'RESULT';
+          hideProgressBar();
+          const _pct = Math.round((STATE.score/total)*100);
+          setMood(_pct >= 90 ? 'YAY' : 'TIRED');
+          segs = [feedback, html(buildResultHTML(STATE.score, total, lesson))];
+        }
+      }
+    } else if (t === 'CONFUSED') {
+      segs = [txt(pick(R.confusion)), qCard(STATE.questionIndex)];
+    } else if (t === 'QUESTION') {
+      const kb = searchKB(userText);
+      segs = kb
+        ? [txt(kb + '\n\n📌 Back to the quiz:'), qCard(STATE.questionIndex)]
+        : [txt("Great question! We'll dig into that in this module. For now, let's answer:"), qCard(STATE.questionIndex)];
+    } else if (t === 'HELP') {
+      segs = [txt(R.help + '\n\n📌 Current question:'), qCard(STATE.questionIndex)];
+    } else {
+      segs = [txt("Please type **A**, **B**, **C**, or **D** to answer:"), qCard(STATE.questionIndex)];
+    }
+
+  /* ── RESULT ── */
+  } else if (STATE.phase === 'RESULT') {
+    if (t === 'GREETING') {
+      segs = [txt("Hey again! 👋 You've completed the quiz. Feel free to ask me anything about the lesson content!")];
+    } else if (t === 'QUESTION') {
+      const kb = searchKB(userText);
+      segs = [txt(kb || "Great question! For deeper coverage, revisit the lesson using the link above. 📚")];
+    } else {
+      segs = [txt("You've finished the quiz! 🎓 Feel free to ask me anything about DHH workplace inclusion.")];
+    }
+  }
+
+  return segs.length ? segs : [txt("I didn't quite catch that. 😊 Try typing **A**, **B**, **C**, or **D** to answer, or ask me a question about the lesson.")];
+}
+
+/* ════════════════════════════════════════════════════════
+   DOM HELPERS
+════════════════════════════════════════════════════════ */
+const $ = id => document.getElementById(id);
+
+/** Mark the most recently rendered question card as answered (disables options). */
+function markCurrentCardAnswered() {
+  const el = document.getElementById('chat-messages');
+  if (!el) return;
+  const cards = el.querySelectorAll('.q-card:not(.answered)');
+  if (cards.length) cards[cards.length - 1].classList.add('answered');
+}
+const messagesEl = $('chat-messages');
+const typingEl   = $('typing-indicator');
+const inputEl    = $('user-input');
+const sendBtn    = $('send-btn');
+
+/**
+ * appendBotMessage — renders an array of segments into one bubble.
+ * text segments → safe HTML via renderMarkdown (HTML-escaped first)
+ * html segments → trusted internal HTML, inserted directly
+ */
+function appendBotMessage(segments) {
+  const row = document.createElement('div');
+  row.className = 'msg-row bot';
+  row.setAttribute('role', 'listitem');
+
+  const av = document.createElement('div');
+  av.className = 'msg-avatar'; av.setAttribute('aria-hidden','true'); av.textContent = 'I';
+  row.appendChild(av);
+
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+
+  segments.forEach(seg => {
+    if (seg.type === 'text') {
+      const wrap = document.createElement('div');
+      wrap.className = 'text-segment';
+      wrap.innerHTML = renderMarkdown(seg.content); // HTML-escaped + markdown
+      bubble.appendChild(wrap);
+    } else if (seg.type === 'html') {
+      // Trusted internal HTML only — never put user input here
+      const wrap = document.createElement('div');
+      wrap.innerHTML = seg.content;
+      bubble.appendChild(wrap);
+    }
+  });
+
+  row.appendChild(bubble);
+  messagesEl.insertBefore(row, typingEl);
+  scrollBottom();
+}
+
+function appendUserMessage(text) {
+  const row = document.createElement('div');
+  row.className = 'msg-row user'; row.setAttribute('role', 'listitem');
+
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.textContent = text; // textContent = XSS-safe, no innerHTML
+  row.appendChild(bubble);
+
+  messagesEl.insertBefore(row, typingEl);
+  scrollBottom();
+}
+
+function scrollBottom() { messagesEl.scrollTop = messagesEl.scrollHeight; }
+
+function showTyping(show) {
+  typingEl.classList.toggle('show', show);
+  if (show) scrollBottom();
+}
+
+function setInputEnabled(enabled) {
+  inputEl.disabled = !enabled;
+  sendBtn.disabled  = !enabled;
+  if (enabled) inputEl.focus();
+}
+
+/* ════════════════════════════════════════════════════════
+   RATE LIMITING & SEND
+════════════════════════════════════════════════════════ */
+let lastSendTime  = 0;
+let isBotTyping   = false;
+
+async function handleUserInput(rawText) {
+  const text = sanitiseInput(rawText);
+  if (!text) return;
+
+  // Rate limit guard
+  const now = Date.now();
+  if (isBotTyping || (now - lastSendTime) < CONFIG.RATE_LIMIT_MS) {
+    $('rate-warning').style.display = 'block';
+    setTimeout(() => $('rate-warning').style.display = 'none', 2200);
+    return;
+  }
+  lastSendTime = now;
+  isBotTyping  = true;
+
+  appendUserMessage(text);
+  inputEl.value = '';
+  setInputEnabled(false);
+  showTyping(true);
+
+  let segments;
+
+  if (CONFIG.USE_BACKEND) {
+    try {
+      const res = await fetch(`${CONFIG.BACKEND_URL}/chat`, {
+        method:      'POST',
+        headers:     { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body:        JSON.stringify({ message: text }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      // Backend returns plain markdown string — wrap as single text segment
+      segments = [{ type:'text', content: String(data.message || '') }];
+    } catch (err) {
+      console.error('Backend error:', err);
+      segments = [{ type:'text', content: "⚠️ Couldn't reach the server. Please ensure the Python backend is running on port 5000." }];
+    }
+  } else {
+    await new Promise(r => setTimeout(r, CONFIG.TYPING_DELAY_BASE + Math.random() * CONFIG.TYPING_DELAY_RAND));
+    segments = botRespond(text);
+  }
+
+  showTyping(false);
+  appendBotMessage(segments);
+  isBotTyping = false;
+  setInputEnabled(true);
+}
+
+/* ════════════════════════════════════════════════════════
+   WIDGET OPEN / CLOSE
+════════════════════════════════════════════════════════ */
+const launcher = $('chat-launcher');
+const overlay  = $('chat-overlay');
+let chatOpened = false;
+
+function openChat() {
+  overlay.classList.add('visible');
+  launcher.classList.add('open');
+  launcher.setAttribute('aria-expanded', 'true');
+
+  if (!chatOpened) {
+    chatOpened = true;
+    // Set header avatar
+    const hdrAvatar = document.getElementById('bot-avatar-img');
+    if (hdrAvatar) hdrAvatar.src = AVATARS.WAVE;
+    setMood('WAVE');
+    setInputEnabled(false);
+    showTyping(true);
+    setTimeout(() => {
+      showTyping(false);
+      appendBotMessage(botRespond('hello'));
+      setInputEnabled(true);
+    }, 1100);
+  } else {
+    inputEl.focus();
+  }
+}
+
+function closeChat() {
+  overlay.classList.remove('visible');
+  launcher.classList.remove('open');
+  launcher.setAttribute('aria-expanded', 'false');
+  launcher.focus();
+}
+
+launcher.addEventListener('click',  () => overlay.classList.contains('visible') ? closeChat() : openChat());
+$('close-btn').addEventListener('click', closeChat);
+overlay.addEventListener('click', e => { if (e.target === overlay) closeChat(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && overlay.classList.contains('visible')) closeChat(); });
+
+sendBtn.addEventListener('click', () => handleUserInput(inputEl.value.trim()));
+inputEl.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleUserInput(inputEl.value.trim()); }
+});
+
+// Clickable answer options — event delegation on message list
+messagesEl.addEventListener('click', e => {
+  const opt = e.target.closest('.q-option[data-letter]');
+  if (!opt) return;
+  const card = opt.closest('.q-card');
+  if (!card || card.classList.contains('answered')) return;
+  handleUserInput(opt.dataset.letter);
+});
+messagesEl.addEventListener('keydown', e => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  const opt = e.target.closest('.q-option[data-letter]');
+  if (!opt) return;
+  const card = opt.closest('.q-card');
+  if (!card || card.classList.contains('answered')) return;
+  e.preventDefault();
+  handleUserInput(opt.dataset.letter);
+});
+</script>
+</body>
+</html>
